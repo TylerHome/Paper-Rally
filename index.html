@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Paper Rally – A5 Track Generator</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#eceae4;--fg:#222}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#222;--fg:#eee}}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;gap:12px;padding:12px}
+.bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:center}
+button,input{font:inherit;padding:8px 12px;border-radius:8px;border:1px solid #888;background:#fff;color:#222}
+input{width:110px}
+button{background:#222;color:#fff;border-color:#222}
+.page{width:100%;max-width:420px;aspect-ratio:148/210;background:#fff;box-shadow:0 2px 12px #0004}
+.page svg{width:100%;height:100%;display:block}
+@page{size:A5 portrait;margin:0}
+@media print{
+ body{background:#fff;padding:0;display:block}
+ .bar{display:none}
+ .page{width:148mm;height:210mm;max-width:none;box-shadow:none;break-after:page;page-break-after:always}
+ .page:last-child{break-after:auto;page-break-after:auto}
+}
+</style>
+</head>
+<body>
+<div class="bar">
+ <input id="seed" type="number" value="7" aria-label="Seed">
+ <button id="new">New track</button>
+ <button id="print">Print A5 (front + back)</button>
+</div>
+<div id="sheet" class="page"></div>
+<div id="rules" class="page"></div>
+<script>
+const W=148,H=210,CS=5,COLS=28,ROWS=38,OX=4,OY=6;
+const X=v=>OX+v*CS,Y=v=>OY+v*CS,f=n=>n.toFixed(2);
+function rng(a){return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+
+function build(seed){
+ const r=rng(seed*7919+13),R=(a,b)=>a+(b-a)*r();
+ // serpentine: 4 corsie, non si richiude
+ const ly=[33,23.5,14,4.7],wp=[[3.5,ly[0]+R(-.8,.8)]];
+ for(let i=0;i<4;i++){
+  const dir=i%2?-1:1,xs=dir>0?[9,15,21]:[19,13,7];
+  xs.forEach(x=>wp.push([x+R(-1,1),ly[i]+R(-.9,.9)]));
+  if(i<3)wp.push([dir>0?24.2:3.8,(ly[i]+ly[i+1])/2+R(-.5,.5)]);
+ }
+ wp.push([3.4,ly[3]+R(-.6,.6)]);
+ const P=[wp[0],...wp,wp[wp.length-1]],S=[];
+ for(let i=1;i<P.length-2;i++)for(let k=0;k<24;k++){
+  const t=k/24,[a,b,c,d]=[P[i-1],P[i],P[i+1],P[i+2]];
+  S.push({x:.5*(2*b[0]+(-a[0]+c[0])*t+(2*a[0]-5*b[0]+4*c[0]-d[0])*t*t+(-a[0]+3*b[0]-3*c[0]+d[0])*t*t*t),
+          y:.5*(2*b[1]+(-a[1]+c[1])*t+(2*a[1]-5*b[1]+4*c[1]-d[1])*t*t+(-a[1]+3*b[1]-3*c[1]+d[1])*t*t*t)});
+ }
+ S.push({x:wp[wp.length-1][0],y:wp[wp.length-1][1]});
+ const N=S.length,p1=R(0,6.3),p2=R(0,6.3);let s=0;
+ S.forEach((p,i)=>{
+  if(i)s+=Math.hypot(p.x-S[i-1].x,p.y-S[i-1].y);
+  const a=S[Math.max(0,i-1)],b=S[Math.min(N-1,i+1)];p.ang=Math.atan2(b.y-a.y,b.x-a.x);
+  p.w=Math.max(3,Math.min(5.6,4.3+1.4*Math.sin(s/5.3+p1)+.8*Math.sin(s/2.3+p2)));
+  p.x=Math.max(p.w/2+.6,Math.min(COLS-p.w/2-.6,p.x));
+  p.y=Math.max(p.w/2+.4,Math.min(ROWS-p.w/2-.4,p.y));
+ });
+ // segmenti di fondo
+ const ns=6+Math.floor(r()*3),cuts=[0];
+ for(let i=1;i<ns;i++)cuts.push(Math.round(N*(i+R(-.3,.3))/ns));
+ cuts.push(N);
+ const surf=new Array(N);let cur=r()<.5?'A':'S';
+ for(let i=0;i<ns;i++){for(let k=cuts[i];k<cuts[i+1];k++)surf[k]=cur;cur=cur==='A'?'S':(r()<.6?'A':'S');}
+ // rasterizzazione a celle
+ const cell=[];
+ for(let j=0;j<ROWS;j++){cell.push([]);for(let i=0;i<COLS;i++){
+  let best=1e9,bi=-1;
+  for(let k=0;k<N;k++){const d=Math.hypot(S[k].x-i-.5,S[k].y-j-.5)-S[k].w/2;if(d<best){best=d;bi=k;}}
+  cell[j].push(best<0?bi:-1);
+ }}
+ const sc=[Math.floor(S[4].x),Math.floor(S[4].y)],fc=[Math.floor(S[N-5].x),Math.floor(S[N-5].y)];
+ 
+ // pozzanghere irregolari
+ const pud=[],used=[];
+ for(let t=0;t<200&&pud.length<5;t++){
+  const k=Math.floor(R(N*.1,N*.9));
+  if(used.some(u=>Math.abs(u-k)<45))continue;
+  used.push(k);
+  const p=S[k],off=R(-.25,.25)*p.w,cx=p.x-Math.sin(p.ang)*off,cy=p.y+Math.cos(p.ang)*off;
+  const rx=Math.min(R(1.3,2.4),p.w/2),ry=rx*R(.6,.95),rot=p.ang+R(-.5,.5);
+  const lobes=[{cx,cy,rx,ry,rot}];
+  const sd=R(0,6.3),d2=rx*.9;
+  lobes.push({cx:cx+Math.cos(sd)*d2,cy:cy+Math.sin(sd)*d2,rx:rx*.7,ry:ry*.75,rot:rot+R(-1,1)});
+  pud.push(lobes);
+ }
+ const inPud=(x,y)=>pud.some(L=>L.some(b=>{
+  const dx=x-b.cx,dy=y-b.cy,c=Math.cos(b.rot),s=Math.sin(b.rot),u=dx*c+dy*s,v=-dx*s+dy*c;
+  return u*u/(b.rx*b.rx)+v*v/(b.ry*b.ry)<.75;}));
+ // alberi a gruppi
+ const trees=new Map(),mnt=new Set();
+ for(let c=0;c<6;c++){
+  const ci=Math.floor(R(1,COLS-1)),cj=Math.floor(R(1,ROWS-1));
+  for(let j=cj-1;j<=cj+1;j++)for(let i=ci-2;i<=ci+2;i++){
+   if(i<0||j<0||i>=COLS||j>=ROWS||cell[j][i]>=0||r()>.42)continue;
+   mnt.add(i+','+j);
+  }
+ }
+ for(let c=0;c<20;c++){
+  const ci=Math.floor(R(0,COLS)),cj=Math.floor(R(0,ROWS)),type=r()<.5?0:1;
+  for(let j=cj-2;j<=cj+2;j++)for(let i=ci-2;i<=ci+2;i++){
+   if(i<0||j<0||i>=COLS||j>=ROWS||cell[j][i]>=0||mnt.has(i+','+j)||r()>.66)continue;
+   if(Math.abs(i-sc[0])<3&&Math.abs(j-sc[1])<3)continue;
+   trees.set(i+','+j,type);
+  }
+ }
+ return{cell,S,N,surf,pud,inPud,trees,mnt,sc,fc,cuts,used};
+}
+
+function blob(b,r){
+ const K=9,pts=[];
+ for(let k=0;k<K;k++){
+  const a=6.283*k/K+(r()-.5)*.5,rad=.72+.5*r(),lx=Math.cos(a)*b.rx*rad,ly=Math.sin(a)*b.ry*rad;
+  pts.push([X(b.cx+lx*Math.cos(b.rot)-ly*Math.sin(b.rot)),Y(b.cy+lx*Math.sin(b.rot)+ly*Math.cos(b.rot))]);
+ }
+ let d=`M${f(pts[0][0])} ${f(pts[0][1])}`;
+ for(let i=0;i<K;i++){
+  const p0=pts[(i+K-1)%K],p1=pts[i],p2=pts[(i+1)%K],p3=pts[(i+2)%K];
+  d+=`C${f(p1[0]+(p2[0]-p0[0])/6)} ${f(p1[1]+(p2[1]-p0[1])/6)} ${f(p2[0]-(p3[0]-p1[0])/6)} ${f(p2[1]-(p3[1]-p1[1])/6)} ${f(p2[0])} ${f(p2[1])}`;
+ }
+ return d+'Z';
+}
+
+function render(seed){
+ const g=build(seed),pr=rng(seed*31+5);
+ const{cell,surf,trees,mnt,S,N,cuts}=g,CSZ=CS;
+ let all='',sA='',sS='';
+ for(let j=0;j<ROWS;j++)for(let i=0;i<COLS;i++){
+  const k=cell[j][i];if(k<0)continue;
+  const rc=`<rect x="${f(X(i)-.15)}" y="${f(Y(j)-.15)}" width="5.3" height="5.3" fill="#fff"/>`;
+  all+=rc;if(surf[k]==='A')sA+=rc;else sS+=rc;
+ }
+ const mk=(id,c)=>`<mask id="${id}" maskUnits="userSpaceOnUse" x="0" y="0" width="${W}" height="${H}"><g filter="url(#goo)">${c}</g></mask>`;
+ let s=`<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" font-family="'Space Mono','Courier New',monospace">
+ <defs>
+  <filter id="goo" filterUnits="userSpaceOnUse" x="0" y="0" width="${W}" height="${H}"><feGaussianBlur stdDeviation="1.1"/><feColorMatrix values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 14 -6"/></filter>
+  ${mk('mAll',all)}${mk('mA',sA)}${mk('mS',sS)}
+  <pattern id="hatch" width="1.5" height="1.5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="1.5" height="1.5" fill="#efefef"/><line x1="0" y1="0" x2="0" y2="1.5" stroke="#8c8c8c" stroke-width=".45"/></pattern>
+   <linearGradient id="gF" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#3a3a3a"/></linearGradient>
+  <linearGradient id="gB" x1="1" y1="0" x2="0" y2="0"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#3a3a3a"/></linearGradient>
+  <mask id="mF" maskUnits="objectBoundingBox" maskContentUnits="objectBoundingBox" x="0" y="0" width="1" height="1"><rect width="1" height="1" fill="url(#gF)"/></mask>
+  <mask id="mB" maskUnits="objectBoundingBox" maskContentUnits="objectBoundingBox" x="0" y="0" width="1" height="1"><rect width="1" height="1" fill="url(#gB)"/></mask>
+   <linearGradient id="gR" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#fff" stop-opacity=".6"/></linearGradient>
+  <linearGradient id="gS" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#000" stop-opacity=".65"/><stop offset="1" stop-color="#000" stop-opacity="0"/></linearGradient>
+   <linearGradient id="gR2" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#000"/><stop offset="1" stop-color="#999"/></linearGradient>
+  <mask id="mR" maskUnits="objectBoundingBox" maskContentUnits="objectBoundingBox" x="0" y="0" width="1" height="1"><rect width="1" height="1" fill="url(#gR2)"/></mask>
+ </defs>
+ <rect width="${W}" height="${H}" fill="#fff"/>
+ <rect width="${W}" height="${H}" fill="#dcdcdc" mask="url(#mAll)"/>
+ <rect width="${W}" height="${H}" fill="url(#hatch)" mask="url(#mS)"/>
+ <rect width="${W}" height="${H}" fill="#5a5a5a" mask="url(#mA)"/>`;
+ // transizione: taglio netto e dritto, preceduto da un gradiente dell'altro fondo
+ let tr='';
+ const fillOf=c=>c==='A'?'#5a5a5a':'url(#hatch)',HH=4.5,GL=7;
+ for(let q=1;q<cuts.length-1;q++){
+  const k=cuts[q],p=S[k],prev=surf[k-1],next=surf[k],hs=(p.w/2+1.2)*CS;
+  const o=`<rect x="${-HH}" y="${f(-hs)}" width="${HH}" height="${f(2*hs)}" fill="${fillOf(prev)}"/><rect x="0" y="${f(-hs)}" width="${HH}" height="${f(2*hs)}" fill="${fillOf(next)}"/><rect x="${-GL}" y="${f(-hs)}" width="${GL}" height="${f(2*hs)}" fill="${fillOf(next)}" mask="url(#mR)"/>`;
+  tr+=`<g transform="translate(${f(X(p.x))} ${f(Y(p.y))}) rotate(${f(p.ang*180/Math.PI)})">${o}</g>`;
+ }
+ s+=`<g mask="url(#mAll)">${tr}</g>`;
+ // pozzanghere
+ g.pud.forEach(L=>{s+=`<g fill="#c6ccd9">`+L.map(b=>`<path d="${blob(b,pr)}"/>`).join('')+`</g>`;});
+ // puntini al centro delle celle
+ let dots='';
+ for(let j=0;j<ROWS;j++)for(let i=0;i<COLS;i++){
+  if(trees.has(i+','+j)||mnt.has(i+','+j))continue;
+  const k=cell[j][i],cx=X(i+.5),cy=Y(j+.5);
+  const col=g.inPud(i+.5,j+.5)?'#8b93a6':k<0?'#a3a3a3':surf[k]==='A'?'#b9b9b9':'#9a9a9a';
+  dots+=`<circle cx="${f(cx)}" cy="${f(cy)}" r=".42" fill="${col}"/>`;
+ }
+ s+=dots;
+ // salto (dosso): rampa che si schiarisce, cresta, ombra di discesa
+ {const rs=rng(seed*17+3),wa=(a,b)=>Math.atan2(Math.sin(a-b),Math.cos(a-b));
+  let sk=Math.floor(N/2);
+  for(let t=0;t<300;t++){
+   const k=Math.floor(N*(.14+.72*rs()));
+   if(cuts.some(c=>Math.abs(c-k)<22)||g.used.some(u=>Math.abs(u-k)<26))continue;
+   if(Math.abs(wa(S[k+10].ang,S[k-10].ang))>.3)continue;
+   sk=k;break;
+  }
+  const p=S[sk],hs=p.w*CS/2+.6,x=X(p.x),y=Y(p.y);
+  let ch='';
+  [-.5,0,.5].forEach(m=>{const cy=m*hs*.9;[-7.5,-5,-2.5].forEach(cx=>{const d=`M${cx-.9} ${f(cy-1.5)}L${cx+.7} ${f(cy)}L${cx-.9} ${f(cy+1.5)}`;
+   ch+=`<path d="${d}" fill="none" stroke="#111" stroke-width="1.1" stroke-linejoin="round"/><path d="${d}" fill="none" stroke="#fff" stroke-width=".45" stroke-linejoin="round"/>`;});});
+  const crest=`M0 ${f(-hs)}Q3 0 0 ${f(hs)}`;
+  s+=`<g mask="url(#mAll)"><g transform="translate(${f(x)} ${f(y)}) rotate(${f(p.ang*180/Math.PI)})">
+   <path d="M-9 ${f(-hs)}L0 ${f(-hs)}Q3 0 0 ${f(hs)}L-9 ${f(hs)}Z" fill="url(#gR)"/>
+   <path d="M0 ${f(-hs)}L3.5 ${f(-hs)}Q6.5 0 3.5 ${f(hs)}L0 ${f(hs)}Q3 0 0 ${f(-hs)}Z" fill="url(#gS)"/>${ch}
+   <path d="${crest}" fill="none" stroke="#111" stroke-width=".9"/></g></g>`;
+  const ext=hs*Math.abs(Math.cos(p.ang))+3*Math.abs(Math.sin(p.ang));
+  s+=`<text x="${f(x)}" y="${f(y-ext-1.2)}" font-size="2.6" font-weight="700" text-anchor="middle" fill="#111" stroke="#fff" stroke-width=".9" paint-order="stroke">JUMP</text>`;
+ }
+ // alberi
+ const pine='M0 -1.9 L1.2 -.3 H.5 L1.5 1.2 H.3 V1.9 H-.3 V1.2 H-1.5 L-.5 -.3 H-1.2Z',rnd='M0 -1.9a1.5 1.4 0 1 1 0 2.8a1.5 1.4 0 1 1 0 -2.8ZM-.3 .8H.3V1.9H-.3Z';
+ trees.forEach((t,key)=>{const[i,j]=key.split(',').map(Number);
+  s+=`<path transform="translate(${f(X(i+.5))} ${f(Y(j+.5))})" d="${t?rnd:pine}" fill="#111"/>`;});
+ const mt='M-2.3 1.9L-.6 -1.9L.5 .1L1 -.7L2.3 1.9Z',cap='M-.6 -1.9L-1.2 -.7L-.6 -1L0 -.7Z';
+ mnt.forEach(key=>{const[i,j]=key.split(',').map(Number);
+  s+=`<g transform="translate(${f(X(i+.5))} ${f(Y(j+.5))})"><path d="${mt}" fill="#3d3d3d"/><path d="${cap}" fill="#fff"/></g>`;});
+ // linee di start / arrivo a scacchi
+ const gate=(k,lab)=>{const p=S[k],half=p.w*CS/2+.6,cols=Math.max(4,Math.round(2*half/1.4)),cw=2*half/cols;
+  let o='';for(let rr=0;rr<2;rr++)for(let i=0;i<cols;i++)o+=`<rect x="${f(-1.4+rr*1.4)}" y="${f(-half+i*cw)}" width="1.4" height="${f(cw)}" fill="${(i+rr)%2?'#fff':'#111'}"/>`;
+  const x=X(p.x),y=Y(p.y),ext=half*Math.abs(Math.cos(p.ang))+1.4*Math.abs(Math.sin(p.ang));
+  return`<g transform="translate(${f(x)} ${f(y)}) rotate(${f(p.ang*180/Math.PI)})">${o}<rect x="-1.4" y="${f(-half)}" width="2.8" height="${f(2*half)}" fill="none" stroke="#111" stroke-width=".35"/></g><text x="${f(x)}" y="${f(y-ext-1.2)}" font-size="2.6" font-weight="700" text-anchor="middle" fill="#111" stroke="#fff" stroke-width=".9" paint-order="stroke">${lab}</text>`;};
+ s+=gate(4,'START')+gate(N-5,'FINISH');
+ s+=`<text x="${OX}" y="203" font-size="3">Rally #${seed}</text><text x="52" y="203" font-size="3">Rolls: ______ /</text><text x="100" y="203" font-size="3">Total: ______</text></svg>`;
+ return s;
+}
+
+function renderRules(){
+ const pine='M0 -1.9 L1.2 -.3 H.5 L1.5 1.2 H.3 V1.9 H-.3 V1.2 H-1.5 L-.5 -.3 H-1.2Z',rnd='M0 -1.9a1.5 1.4 0 1 1 0 2.8a1.5 1.4 0 1 1 0 -2.8ZM-.3 .8H.3V1.9H-.3Z',mt='M-2.3 1.9L-.6 -1.9L.5 .1L1 -.7L2.3 1.9Z',cap='M-.6 -1.9L-1.2 -.7L-.6 -1L0 -.7Z';
+ const dots=(col,skip)=>{let o='';for(const x of [-10,-5,0,5,10])for(const y of [-5,0,5]){if(skip&&skip(x,y))continue;o+=`<circle cx="${x}" cy="${y}" r=".42" fill="${col}"/>`;}return o;};
+ const gate=()=>{let o='';for(let r=0;r<6;r++)for(let c=0;c<2;c++)o+=`<rect x="${-2+c*2}" y="${-6+r*2}" width="2" height="2" fill="${(r+c)%2?'#fff':'#111'}"/>`;return o+'<rect x="-2" y="-6" width="4" height="12" fill="none" stroke="#111" stroke-width=".35"/>';};
+ const chev=[-10,-6,-2].map(x=>{const d=`M${x-.9} -1.6L${x+.7} 0L${x-.9} 1.6`;return`<path d="${d}" fill="none" stroke="#111" stroke-width="1.1" stroke-linejoin="round"/><path d="${d}" fill="none" stroke="#fff" stroke-width=".45" stroke-linejoin="round"/>`;}).join('');
+ const offroad=(()=>{let o='<rect x="-13" y="-7.5" width="26" height="5" rx="1.5" fill="#5a5a5a"/>';
+  for(const x of [-10,-5,0,5,10])o+=`<circle cx="${x}" cy="-5" r=".42" fill="#b9b9b9"/>`;
+  for(const [x,y] of [[-10,0],[0,0],[-10,5],[-5,5],[0,5],[5,5]])o+=`<circle cx="${x}" cy="${y}" r=".42" fill="#a3a3a3"/>`;
+  o+='<rect x="-7.5" y="-2.5" width="5" height="5" rx=".8" fill="#111"/>';
+  o+=`<path transform="translate(5 0) scale(1.5)" d="${pine}" fill="#111"/><path transform="translate(10 5) scale(1.5)" d="${rnd}" fill="#111"/>`;
+  o+='<text x="10" y="-3.4" font-size="4.2" font-weight="700" text-anchor="middle" fill="#fff">½</text>';
+  return o;})();
+ const rows=[
+  {h:21,t:'CHECKERED LINE',sym:gate(),l:['Start behind the START line. The race ends','when you cross the FINISH line.']},
+  {h:21,t:'BLACK SQUARE = YOUR CAR',sym:dots('#a3a3a3',(x,y)=>x===0&&y===0)+'<rect x="-2.5" y="-2.5" width="5" height="5" rx=".8" fill="#111"/>',l:['Roll the die and move your car that many','squares. Blacken the square where you stop.']},
+  {h:21,t:'ASPHALT',sym:'<rect x="-12" y="-5.5" width="24" height="11" rx="1.5" fill="#5a5a5a"/>'+dots('#b9b9b9'),l:['Boost: on every roll you move one square','more than the number rolled.']},
+  {h:21,t:'GRAVEL',sym:'<rect x="-12" y="-5.5" width="24" height="11" rx="1.5" fill="url(#rH)" stroke="#bbb" stroke-width=".3"/>'+dots('#9a9a9a'),l:['No bonus: you move exactly the number','shown on the die.']},
+  {h:21,t:'PUDDLE',sym:'<path d="M-9 0C-9 -4 -4 -6 0 -5C4 -6 9 -3 8.5 1C9.5 4.5 3 6 -1 5C-5 6.5 -9 4 -9 0Z" fill="#c6ccd9"/><circle cx="-3" cy="0" r=".42" fill="#8b93a6"/><circle cx="3" cy="0" r=".42" fill="#8b93a6"/>',l:['If you hit a puddle you stop right there.','Your roll ends, even with squares left.']},
+  {h:30,t:'OFF-ROAD',sym:offroad,l:['You may leave the track by one square only;','the remaining squares are halved. E.g. roll 4,','off-road on the 2nd square: 2 left, move 1.','(Odd remainder rounds down: 3 left = 1.5, so','move 1.) You must return to the track.']},
+  {h:21,t:'BUMP / JUMP',sym:'<clipPath id="rC"><rect x="-14" y="-7" width="28" height="14" rx="1.5"/></clipPath><g clip-path="url(#rC)"><rect x="-14" y="-7" width="28" height="14" fill="#5a5a5a"/><path d="M-14 -7L0 -7Q3 0 0 7L-14 7Z" fill="url(#rGR)"/><path d="M0 -7L3.5 -7Q6.5 0 3.5 7L0 7Q3 0 0 -7Z" fill="url(#rGS)"/>'+chev+'<path d="M0 -7Q3 0 0 7" fill="none" stroke="#111" stroke-width=".9"/></g>',l:['A rise in the road. If your roll takes you past','the crest, you get +2 squares.']},
+  {h:21,t:'TREES & MOUNTAINS',sym:`<path transform="translate(-8 0) scale(1.9)" d="${pine}" fill="#111"/><path transform="translate(0 0) scale(1.9)" d="${rnd}" fill="#111"/><g transform="translate(8.5 0) scale(1.9)"><path d="${mt}" fill="#3d3d3d"/><path d="${cap}" fill="#fff"/></g>`,l:['Scenery off the track. White dotted areas','are off-road.']}
+ ];
+ let s=`<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" font-family="'Space Mono','Courier New',monospace">
+ <defs><pattern id="rH" width="1.5" height="1.5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="1.5" height="1.5" fill="#efefef"/><line x1="0" y1="0" x2="0" y2="1.5" stroke="#8c8c8c" stroke-width=".45"/></pattern>
+ <linearGradient id="rGR" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#fff" stop-opacity=".6"/></linearGradient>
+ <linearGradient id="rGS" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#000" stop-opacity=".65"/><stop offset="1" stop-color="#000" stop-opacity="0"/></linearGradient></defs>
+ <rect width="${W}" height="${H}" fill="#fff"/>
+ <text x="8" y="14" font-size="7" font-weight="700">RULES</text><text x="140" y="14" font-size="3.2" text-anchor="end" fill="#666">Paper Rally</text>`;
+ let yy=26;
+ rows.forEach((r,i)=>{
+  const y=yy;yy+=r.h;
+  if(i)s+=`<line x1="8" x2="140" y1="${y-3.5}" y2="${y-3.5}" stroke="#ccc" stroke-width=".3"/>`;
+  s+=`<g transform="translate(22 ${y+8.5})">${r.sym}</g><text x="44" y="${y+3.6}" font-size="3.6" font-weight="700">${r.t}</text>`;
+  r.l.forEach((ln,j)=>{s+=`<text x="44" y="${y+8.6+j*4.3}" font-size="3.1" fill="#333">${ln}</text>`;});
+ });
+ return s+`</svg>`;
+}
+const $=id=>document.getElementById(id);
+function draw(){$('sheet').innerHTML=render(parseInt($('seed').value)||1);$('rules').innerHTML=renderRules();}
+$('new').onclick=()=>{$('seed').value=Math.floor(Math.random()*99999)+1;draw();};
+$('seed').oninput=draw;
+$('print').onclick=()=>window.print();
+draw();
+</script>
+</body>
+</html>
