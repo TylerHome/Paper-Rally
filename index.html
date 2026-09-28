@@ -32,6 +32,7 @@ label{display:flex;gap:6px;align-items:center;font-size:14px}
  <button id="new">New track</button>
  <select id="size" aria-label="Paper size"><option value="A5">A5</option><option value="A7">A7</option></select>
  <label><input type="checkbox" id="withRules" checked style="width:auto"> Rules page</label>
+ <label>Asphalt <input type="range" id="tone" min="50" max="85" value="64" style="width:100px"></label>
  <button id="print">Print</button>
 </div>
 <div id="sheet" class="page"></div>
@@ -43,7 +44,9 @@ function rng(a){return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t
 
 const totem=(x,y,sc)=>{sc=sc||1;let o='';for(let r=0;r<5;r++)for(let c=0;c<2;c++)o+=`<rect x="${-1.4+c*1.4}" y="${f(-4.2+r*1.56)}" width="1.4" height="1.56" fill="${(r+c)%2?'#fff':'#111'}"/>`;
  return`<g transform="translate(${f(x)} ${f(y)}) scale(${sc})"><rect x="-2.1" y="3.6" width="4.2" height="1.1" rx=".3" fill="#111"/>${o}<rect x="-1.4" y="-4.2" width="2.8" height="7.8" fill="none" stroke="#111" stroke-width=".4"/><circle cx="0" cy="-5.1" r=".9" fill="#111"/></g>`;};
-let SIZE='A5';
+let SIZE='A5',ASPH='#a3a3a8',DOTA='#4a4a4f';
+function setTone(p){const v=Math.round(255*p/100);ASPH=`rgb(${v},${v},${Math.min(255,v+5)})`;DOTA=v>135?'#4a4a4f':'#dcdce0';}
+setTone(64);
 function applySize(){const a=SIZE==='A7';document.getElementById('pg').textContent=`@page{size:${a?'74mm 105mm':'148mm 210mm'};margin:0}`;
  document.documentElement.style.setProperty('--pw',a?'74mm':'148mm');document.documentElement.style.setProperty('--ph',a?'105mm':'210mm');}
 function build(seed){
@@ -202,18 +205,18 @@ function render(seed){
   <linearGradient id="gB" x1="1" y1="0" x2="0" y2="0"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#3a3a3a"/></linearGradient>
   <mask id="mF" maskUnits="objectBoundingBox" maskContentUnits="objectBoundingBox" x="0" y="0" width="1" height="1"><rect width="1" height="1" fill="url(#gF)"/></mask>
   <mask id="mB" maskUnits="objectBoundingBox" maskContentUnits="objectBoundingBox" x="0" y="0" width="1" height="1"><rect width="1" height="1" fill="url(#gB)"/></mask>
-   <linearGradient id="gR" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#fff" stop-opacity=".6"/></linearGradient>
-  <linearGradient id="gS" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#000" stop-opacity=".65"/><stop offset="1" stop-color="#000" stop-opacity="0"/></linearGradient>
+   <linearGradient id="gR" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#fff" stop-opacity=".55"/></linearGradient>
+  <linearGradient id="gS" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#000" stop-opacity=".5"/><stop offset="1" stop-color="#000" stop-opacity="0"/></linearGradient>
    <linearGradient id="gR2" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#000"/><stop offset="1" stop-color="#999"/></linearGradient>
   <mask id="mR" maskUnits="objectBoundingBox" maskContentUnits="objectBoundingBox" x="0" y="0" width="1" height="1"><rect width="1" height="1" fill="url(#gR2)"/></mask>
  </defs>
  <rect width="${W}" height="${H}" fill="#fff"/>
- <rect width="${W}" height="${H}" fill="#dcdcdc" mask="url(#mAll)"/>
+ <rect width="${W}" height="${H}" fill="#e6e6e6" mask="url(#mAll)"/>
  <rect width="${W}" height="${H}" fill="url(#hatch)" mask="url(#mS)"/>
- <rect width="${W}" height="${H}" fill="#5a5a5a" mask="url(#mA)"/>`;
+ <rect width="${W}" height="${H}" fill="${ASPH}" mask="url(#mA)"/>`;
  // transizione: taglio netto e dritto, preceduto da un gradiente dell'altro fondo
  let tr='';
- const fillOf=c=>c==='A'?'#5a5a5a':'url(#hatch)',HH=4.5,GL=7;
+ const fillOf=c=>c==='A'?ASPH:'url(#hatch)',HH=4.5,GL=7;
  for(let q=1;q<cuts.length-1;q++){
   const k=cuts[q],p=S[k],prev=surf[k-1],next=surf[k],hs=(p.w/2+1.2)*CS;
   const o=`<rect x="${-HH}" y="${f(-hs)}" width="${HH}" height="${f(2*hs)}" fill="${fillOf(prev)}"/><rect x="0" y="${f(-hs)}" width="${HH}" height="${f(2*hs)}" fill="${fillOf(next)}"/><rect x="${-GL}" y="${f(-hs)}" width="${GL}" height="${f(2*hs)}" fill="${fillOf(next)}" mask="url(#mR)"/>`;
@@ -227,7 +230,7 @@ function render(seed){
  for(let j=0;j<ROWS;j++)for(let i=0;i<COLS;i++){
   if(trees.has(i+','+j)||mnt.has(i+','+j))continue;
   const k=cell[j][i],cx=X(i+.5),cy=Y(j+.5);
-  const col=g.inPud(i+.5,j+.5)?'#8b93a6':k<0?'#a3a3a3':surf[k]==='A'?'#b9b9b9':'#9a9a9a';
+  const col=g.inPud(i+.5,j+.5)?'#8b93a6':k<0?'#a3a3a3':surf[k]==='A'?DOTA:'#9a9a9a';
   dots+=`<circle cx="${f(cx)}" cy="${f(cy)}" r=".42" fill="${col}"/>`;
  }
  s+=dots;
@@ -257,7 +260,24 @@ function render(seed){
   return o+(sn.vert?`<rect x="${f(sn.cx-th/2)}" y="${f(sn.cy-sn.len/2)}" width="${th}" height="${f(sn.len)}" fill="none" stroke="#111" stroke-width=".35"/>`:`<rect x="${f(sn.cx-sn.len/2)}" y="${f(sn.cy-th/2)}" width="${f(sn.len)}" height="${th}" fill="none" stroke="#111" stroke-width=".35"/>`);};
   const lbl=(b,lab)=>`<text x="${f(b.cx)}" y="${f(b.cy+FS*.35)}" font-size="${FS}" font-weight="700" text-anchor="middle" fill="#111" stroke="#fff" stroke-width=".9" paint-order="stroke">${lab}</text>`;
  s+=gate(snS,2)+gate(snF,1)+totems.join('')+lbl(L1,'START')+lbl(L2,'FINISH')+lbl(L3,'JUMP');
- s+=`<text x="${OX}" y="203" font-size="${3*LS}">Rally #${seed}</text><text x="52" y="203" font-size="${3*LS}">Rolls: ______ /</text><text x="100" y="203" font-size="${3*LS}">Total: ______</text></svg>`;
+
+ { // piè di pagina: giocatori (con il loro simbolo) e vincitore
+  const z=LS>1?4.2:3.2,yc=199.8;let o='';
+  for(let i=0;i<4;i++){
+   const x0=OX+i*36,st=`stroke="#111" stroke-width=".4"`;
+   if(i===0)o+=`<rect x="${x0}" y="${f(yc-z/2)}" width="${z}" height="${z}" rx=".5" fill="#111"/>`;
+   else o+=`<rect x="${x0}" y="${f(yc-z/2)}" width="${z}" height="${z}" rx=".5" fill="#fff" ${st}/>`;
+   if(i===2){o+=`<clipPath id="fpc"><rect x="${x0}" y="${f(yc-z/2)}" width="${z}" height="${z}"/></clipPath><g clip-path="url(#fpc)">`;
+    for(let d=-z-2;d<=z+1;d+=1.05)o+=`<line x1="${f(x0-1+d)}" y1="${f(yc+z/2+1)}" x2="${f(x0-1+d+z+2)}" y2="${f(yc-z/2-1)}" stroke="#111" stroke-width=".4"/>`;
+    o+='</g>';}
+   if(i===3)o+=`<circle cx="${f(x0+z/2)}" cy="${f(yc)}" r="${f(z*.27)}" fill="#111"/>`;
+   o+=`<line x1="${f(x0+z+1.5)}" y1="${f(yc+z/2)}" x2="${f(x0+33)}" y2="${f(yc+z/2)}" stroke="#888" stroke-width=".3"/>`;
+  }
+  const fs=z,yb=205;
+  o+=`<text x="${OX}" y="${yb}" font-size="${fs}" font-weight="700">Winner:</text><line x1="${f(OX+7*fs*.62+1.5)}" y1="${yb}" x2="${f(OX+96)}" y2="${yb}" stroke="#888" stroke-width=".3"/><text x="${W-OX}" y="${yb}" font-size="${fs*.8}" text-anchor="end" fill="#666">Rally #${seed}</text>`;
+  s+=o;
+ }
+ s+='</svg>';
  return s;
 }
 
@@ -266,8 +286,8 @@ function renderRules(){
  const dots=(col,skip)=>{let o='';for(const x of [-10,-5,0,5,10])for(const y of [-5,0,5]){if(skip&&skip(x,y))continue;o+=`<circle cx="${x}" cy="${y}" r=".42" fill="${col}"/>`;}return o;};
  const gate=()=>{let o='';for(let r=0;r<6;r++)for(let c=0;c<2;c++)o+=`<rect x="${-2+c*2}" y="${-6+r*2}" width="2" height="2" fill="${(r+c)%2?'#fff':'#111'}"/>`;return o+'<rect x="-2" y="-6" width="4" height="12" fill="none" stroke="#111" stroke-width=".35"/>';};
  const chev=[-10,-6,-2].map(x=>{const d=`M${x-.9} -1.6L${x+.7} 0L${x-.9} 1.6`;return`<path d="${d}" fill="none" stroke="#111" stroke-width="1.1" stroke-linejoin="round"/><path d="${d}" fill="none" stroke="#fff" stroke-width=".45" stroke-linejoin="round"/>`;}).join('');
- const offroad=(()=>{let o='<clipPath id="rC2"><rect x="-13" y="-8.5" width="26" height="17" rx="1.5"/></clipPath><g clip-path="url(#rC2)"><path d="M-14 -4C0 -4 6 -1 6 9" fill="none" stroke="#5a5a5a" stroke-width="5"/></g>';
-  for(const [x,y] of [[-10,-4],[-5,-4]])o+=`<circle cx="${x}" cy="${y}" r=".42" fill="#b9b9b9"/>`;
+ const offroad=(()=>{let o='<clipPath id="rC2"><rect x="-13" y="-8.5" width="26" height="17" rx="1.5"/></clipPath><g clip-path="url(#rC2)"><path d="M-14 -4C0 -4 6 -1 6 9" fill="none" stroke="url(#rA)" stroke-width="5"/></g>';
+  for(const [x,y] of [[-10,-4],[-5,-4]])o+=`<circle cx="${x}" cy="${y}" r=".42" fill="${DOTA}"/>`;
   for(const [x,y] of [[-10,2],[-5,2],[0,4],[12,2],[8,3]])o+=`<circle cx="${x}" cy="${y}" r=".42" fill="#a3a3a3"/>`;
   o+='<rect x="5.7" y="-6" width="4.6" height="4.6" rx=".8" fill="#111"/>';
   o+=`<path transform="translate(-7 6) scale(1.4)" d="${pine}" fill="#111"/><path transform="translate(1 6.5) scale(1.3)" d="${rnd}" fill="#111"/>`;
@@ -285,20 +305,20 @@ function renderRules(){
    o+=`<path d="M${f(r0*c)} ${f(r0*n)}L${f(r1*c)} ${f(r1*n)}M${f(h1[0])} ${f(h1[1])}L${f(r1*c)} ${f(r1*n)}L${f(h2[0])} ${f(h2[1])}" fill="none" stroke="#111" stroke-width=".55" stroke-linecap="round" stroke-linejoin="round"/>`;}
   return o;})();
  const rows=[
-  {h:21,t:'START LINE & FINISH TOTEMS',sym:`<g transform="translate(-8 0)">${gate()}</g>${totem(3,0,.95)}${totem(11,0,.95)}`,l:['Start behind the checkered START line. The','race ends when you pass between the two','FINISH totems.']},
+  {h:21,t:'START LINE & FINISH TOTEMS',sym:`<g transform="translate(-8 0)">${gate()}</g>${totem(3,0,.95)}${totem(11,0,.95)}`,l:['Start behind the checkered START line. The','first car to pass between the two FINISH','totems wins.']},
   {h:21,t:'YOUR CAR · 2 TO 4 PLAYERS',sym:carSyms,l:['2 to 4 players. Each player picks a different','square type. Roll the die and move that many','squares, then mark the square where you stop.']},
   {h:17,t:'MOVEMENT',sym:arrows,l:['You may move in any direction, even backwards.','You cannot pass over a car on the track.']},
-  {h:17,t:'ASPHALT',sym:'<rect x="-12" y="-5.5" width="24" height="11" rx="1.5" fill="#5a5a5a"/>'+dots('#b9b9b9'),l:['Boost: on every roll you move one square','more than the number rolled.']},
+  {h:17,t:'ASPHALT',sym:'<rect x="-12" y="-5.5" width="24" height="11" rx="1.5" fill="url(#rA)"/>'+dots(DOTA),l:['Boost: on every roll you move one square','more than the number rolled.']},
   {h:17,t:'GRAVEL',sym:'<rect x="-12" y="-5.5" width="24" height="11" rx="1.5" fill="url(#rH)" stroke="#bbb" stroke-width=".3"/>'+dots('#9a9a9a'),l:['No bonus: you move exactly the number','shown on the die.']},
   {h:17,t:'PUDDLE',sym:'<path d="M-9 0C-9 -4 -4 -6 0 -5C4 -6 9 -3 8.5 1C9.5 4.5 3 6 -1 5C-5 6.5 -9 4 -9 0Z" fill="#c6ccd9"/><circle cx="-3" cy="0" r=".42" fill="#8b93a6"/><circle cx="3" cy="0" r=".42" fill="#8b93a6"/>',l:['If you hit a puddle you stop right there.','Your roll ends, even with squares left.']},
   {h:30,t:'OFF-ROAD',sym:offroad,l:['You may leave the track by one square only;','the remaining squares are halved. E.g. roll 4,','off-road on the 2nd square: 2 left, move 1.','(Odd remainder rounds down: 3 left = 1.5, so','move 1.) You must return to the track.']},
-  {h:17,t:'BUMP / JUMP',sym:'<clipPath id="rC"><rect x="-14" y="-7" width="28" height="14" rx="1.5"/></clipPath><g clip-path="url(#rC)"><rect x="-14" y="-7" width="28" height="14" fill="#5a5a5a"/><path d="M-14 -7L0 -7L0 7L-14 7Z" fill="url(#rGR)"/><path d="M0 -7L3.5 -7L3.5 7L0 7Z" fill="url(#rGS)"/>'+chev+'<path d="M0 -7L0 7" fill="none" stroke="#111" stroke-width=".9"/></g>',l:['A rise in the road. If your roll takes you past','the crest, you get +2 squares.']},
+  {h:17,t:'BUMP / JUMP',sym:'<clipPath id="rC"><rect x="-14" y="-7" width="28" height="14" rx="1.5"/></clipPath><g clip-path="url(#rC)"><rect x="-14" y="-7" width="28" height="14" fill="url(#rA)"/><path d="M-14 -7L0 -7L0 7L-14 7Z" fill="url(#rGR)"/><path d="M0 -7L3.5 -7L3.5 7L0 7Z" fill="url(#rGS)"/>'+chev+'<path d="M0 -7L0 7" fill="none" stroke="#111" stroke-width=".9"/></g>',l:['A rise in the road. If your roll takes you past','the crest, you get +2 squares.']},
   {h:17,t:'TREES & MOUNTAINS',sym:`<path transform="translate(-8 0) scale(1.9)" d="${pine}" fill="#111"/><path transform="translate(0 0) scale(1.9)" d="${rnd}" fill="#111"/><g transform="translate(8.5 0) scale(1.9)"><path d="${mt}" fill="#3d3d3d"/><path d="${cap}" fill="#fff"/></g>`,l:['Scenery off the track. White dotted areas','are off-road.']}
  ];
  let s=`<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" font-family="'Space Mono','Courier New',monospace">
- <defs><pattern id="rH" width="1.5" height="1.5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="1.5" height="1.5" fill="#efefef"/><line x1="0" y1="0" x2="0" y2="1.5" stroke="#8c8c8c" stroke-width=".45"/></pattern>
- <linearGradient id="rGR" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#fff" stop-opacity=".6"/></linearGradient>
- <linearGradient id="rGS" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#000" stop-opacity=".65"/><stop offset="1" stop-color="#000" stop-opacity="0"/></linearGradient></defs>
+ <defs><pattern id="rA" width="1" height="1" patternUnits="userSpaceOnUse"><rect width="1" height="1" fill="${ASPH}"/></pattern><pattern id="rH" width="1.5" height="1.5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="1.5" height="1.5" fill="#efefef"/><line x1="0" y1="0" x2="0" y2="1.5" stroke="#8c8c8c" stroke-width=".45"/></pattern>
+ <linearGradient id="rGR" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#fff" stop-opacity=".55"/></linearGradient>
+ <linearGradient id="rGS" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#000" stop-opacity=".5"/><stop offset="1" stop-color="#000" stop-opacity="0"/></linearGradient></defs>
  <rect width="${W}" height="${H}" fill="#fff"/>
  <text x="8" y="14" font-size="7" font-weight="700">RULES</text><text x="140" y="14" font-size="3.2" text-anchor="end" fill="#666">Paper Rally</text>`;
  let yy=26;
@@ -316,6 +336,7 @@ $('new').onclick=()=>{$('seed').value=Math.floor(Math.random()*99999)+1;draw();}
 $('seed').oninput=draw;
 $('size').onchange=()=>{SIZE=$('size').value;$('withRules').checked=SIZE==='A5';applySize();draw();};
 $('withRules').onchange=draw;
+$('tone').oninput=()=>{setTone(+$('tone').value);draw();};
 $('print').onclick=()=>window.print();
 applySize();draw();
 </script>
