@@ -44,7 +44,7 @@ function rng(a){return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t
 
 const totem=(x,y,sc)=>{sc=sc||1;let o='';for(let r=0;r<5;r++)for(let c=0;c<2;c++)o+=`<rect x="${-1.4+c*1.4}" y="${f(-4.2+r*1.56)}" width="1.4" height="1.56" fill="${(r+c)%2?'#fff':'#111'}"/>`;
  return`<g transform="translate(${f(x)} ${f(y)}) scale(${sc})"><rect x="-2.1" y="3.6" width="4.2" height="1.1" rx=".3" fill="#111"/>${o}<rect x="-1.4" y="-4.2" width="2.8" height="7.8" fill="none" stroke="#111" stroke-width=".4"/><circle cx="0" cy="-5.1" r=".9" fill="#111"/></g>`;};
-let SIZE='A5',ASPH='#a3a3a8',DOTA='#4a4a4f';
+let LAST=null,SIZE='A5',ASPH='#a3a3a8',DOTA='#4a4a4f';
 function setTone(p){const v=Math.round(255*p/100);ASPH=`rgb(${v},${v},${Math.min(255,v+5)})`;DOTA=v>135?'#4a4a4f':'#dcdce0';}
 setTone(64);
 function applySize(){const a=SIZE==='A7';document.getElementById('pg').textContent=`@page{size:${a?'74mm 105mm':'148mm 210mm'};margin:0}`;
@@ -75,7 +75,7 @@ function build(seed){
   p.y=Math.max(p.w/2+.4,Math.min(ROWS-p.w/2-.4,p.y));
  });
  // segmenti di fondo
- const ns=6+Math.floor(r()*3),cuts=[0];
+ const ns=5+Math.floor(r()*2),cuts=[0];
  for(let i=1;i<ns;i++)cuts.push(Math.round(N*(i+R(-.3,.3))/ns));
  cuts.push(N);
  const surf=new Array(N);let cur=r()<.5?'A':'S';
@@ -90,18 +90,36 @@ function build(seed){
  const sc=[Math.floor(S[4].x),Math.floor(S[4].y)],fc=[Math.floor(S[N-5].x),Math.floor(S[N-5].y)];
  
  // pozzanghere irregolari
- const pud=[],used=[];
- for(let t=0;t<200&&pud.length<5;t++){
+ // posizione del salto (scelta prima delle pozzanghere)
+ const rs=rng(seed*17+3),wa=(x,y)=>Math.atan2(Math.sin(x-y),Math.cos(x-y));
+ let sk=-1,bestD=-1,fbk=Math.floor(N/2);
+ const dcut=k=>Math.min(...cuts.map(c=>Math.abs(c-k)));
+ for(let t=0;t<400&&sk<0;t++){
+  const k=Math.floor(N*(.14+.72*rs()));
+  if(dcut(k)<24)continue;
+  if(Math.abs(wa(S[k+10].ang,S[k-10].ang))>.3)continue;
+  const qa=S[k].ang/(Math.PI/2);if(Math.abs(qa-Math.round(qa))>.28)continue;
+  sk=k;
+ }
+ if(sk<0)for(let k=Math.floor(N*.14);k<N*.86;k++){const d=dcut(k);if(d>bestD){bestD=d;fbk=k;}}
+ if(sk<0)sk=fbk;
+ // zone da tenere libere dalle pozzanghere (in celle, lungo la strada)
+ const zones=cuts.slice(1,-1).map(c=>({k:c,lo:-1.9,hi:1.4})).concat([{k:sk,lo:-2.8,hi:1.7}]);
+ const pud=[],used=[],npud=2+Math.floor(r()*2); // 2 o 3 pozzanghere
+ for(let t=0;t<800&&pud.length<npud;t++){
   const k=Math.floor(R(N*.1,N*.9));
   if(used.some(u=>Math.abs(u-k)<45))continue;
-  used.push(k);
   const p=S[k],off=R(-.25,.25)*p.w,cx=p.x-Math.sin(p.ang)*off,cy=p.y+Math.cos(p.ang)*off;
   const rx=Math.min(R(1.3,2.4),p.w/2),ry=rx*R(.6,.95),rot=p.ang+R(-.5,.5);
   const lobes=[{cx,cy,rx,ry,rot}];
   const sd=R(0,6.3),d2=rx*.9;
   lobes.push({cx:cx+Math.cos(sd)*d2,cy:cy+Math.sin(sd)*d2,rx:rx*.7,ry:ry*.75,rot:rot+R(-1,1)});
-  pud.push(lobes);
+  const bad=zones.some(z=>{const q=S[z.k];return lobes.some(l=>{const dx=l.cx-q.x,dy=l.cy-q.y;if(Math.hypot(dx,dy)>10)return false;
+   const pr=dx*Math.cos(q.ang)+dy*Math.sin(q.ang),e=1.3*Math.max(l.rx,l.ry);return pr+e>z.lo&&pr-e<z.hi;});});
+  if(bad)continue;
+  used.push(k);pud.push(lobes);
  }
+
  const inPud=(x,y)=>pud.some(L=>L.some(b=>{
   const dx=x-b.cx,dy=y-b.cy,c=Math.cos(b.rot),s=Math.sin(b.rot),u=dx*c+dy*s,v=-dx*s+dy*c;
   return u*u/(b.rx*b.rx)+v*v/(b.ry*b.ry)<.75;}));
@@ -122,7 +140,7 @@ function build(seed){
    trees.set(i+','+j,type);
   }
  }
- return{cell,S,N,surf,pud,inPud,trees,mnt,sc,fc,cuts,used};
+ return{cell,S,N,surf,pud,inPud,trees,mnt,sc,fc,cuts,used,sk};
 }
 
 function blob(b,r){
@@ -143,16 +161,7 @@ function render(seed){
  const g=build(seed),pr=rng(seed*31+5);
  const{cell,surf,trees,mnt,S,N,cuts}=g;
  const LS=SIZE==='A7'?1.5:1,FS=2.6*LS;
- // posizione del salto
- const rs=rng(seed*17+3),wa=(a,b)=>Math.atan2(Math.sin(a-b),Math.cos(a-b));
- let sk=Math.floor(N/2);
- for(let t=0;t<300;t++){
-  const k=Math.floor(N*(.14+.72*rs()));
-  if(cuts.some(c=>Math.abs(c-k)<22)||g.used.some(u=>Math.abs(u-k)<26))continue;
-  if(Math.abs(wa(S[k+10].ang,S[k-10].ang))>.3)continue;
-  const qa=S[k].ang/(Math.PI/2);if(Math.abs(qa-Math.round(qa))>.28)continue;
-  sk=k;break;
- }
+ const sk=g.sk;LAST={g,sk};
  // etichette e totem: mai sulla strada, mai sopra ad altri elementi
  const taken=[],road=(i,j)=>i>=0&&j>=0&&i<COLS&&j<ROWS&&cell[j][i]>=0;
  // linee sempre allineate alla griglia: sul confine tra due file/colonne di puntini
