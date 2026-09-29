@@ -15,14 +15,21 @@ input{width:110px}
 button{background:#222;color:#fff;border-color:#222}
 .page{width:100%;max-width:420px;aspect-ratio:148/210;background:#fff;box-shadow:0 2px 12px #0004}
 .page svg{width:100%;height:100%;display:block}
+.page.a4sheet{aspect-ratio:297/210;display:flex}
+.page.a4sheet>svg{width:50%;height:100%;display:block}
+.page.a5x4sheet{aspect-ratio:148/210;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr}
+.page.a5x4sheet>svg{width:100%;height:100%;display:block}
 select{font:inherit;padding:8px;border-radius:8px;border:1px solid #888;background:#fff;color:#222}
 label{display:flex;gap:6px;align-items:center;font-size:14px}
 .norules #rules{display:none}
+.nosplit #rules{display:none}
 @media print{
  body{background:#fff;padding:0;display:block}
  .bar{display:none}
  .page{width:var(--pw,148mm);height:var(--ph,210mm);max-width:none;box-shadow:none;break-after:page;page-break-after:always}
  .page:last-child{break-after:auto;page-break-after:auto}
+ .page.a4sheet,.page.a5x4sheet{display:flex}
+ .page.a5x4sheet{display:grid}
 }
 </style>
 </head>
@@ -30,7 +37,7 @@ label{display:flex;gap:6px;align-items:center;font-size:14px}
 <div class="bar">
  <input id="seed" type="number" value="7" aria-label="Seed">
  <button id="new">New track</button>
- <select id="size" aria-label="Paper size"><option value="A5">A5</option><option value="A7">A7</option></select>
+ <select id="sheet_" aria-label="Sheet"><option value="A5">A5 – 1 track</option><option value="A7">A7 – 1 track</option><option value="A4x2">A4 – 2× A5 tracks</option><option value="A5x4">A5 – 4× A7 tracks</option></select>
  <label><input type="checkbox" id="withRules" checked style="width:auto"> Rules page</label>
  <label>Asphalt <input type="range" id="tone" min="50" max="85" value="64" style="width:100px"></label>
  <button id="print">Print</button>
@@ -45,8 +52,16 @@ function rng(a){return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t
 let LAST=null,SIZE='A5',ASPH='#a3a3a8',DOTA='#4a4a4f';
 function setTone(p){const v=Math.round(255*p/100);ASPH=`rgb(${v},${v},${Math.min(255,v+5)})`;DOTA=v>135?'#4a4a4f':'#dcdce0';}
 setTone(64);
-function applySize(){const a=SIZE==='A7';document.getElementById('pg').textContent=`@page{size:${a?'74mm 105mm':'148mm 210mm'};margin:0}`;
- document.documentElement.style.setProperty('--pw',a?'74mm':'148mm');document.documentElement.style.setProperty('--ph',a?'105mm':'210mm');}
+function applySheet(sheet){
+ const cfg={A5:{page:'148mm 210mm',pw:'148mm',ph:'210mm',cls:''},
+            A7:{page:'74mm 105mm',pw:'74mm',ph:'105mm',cls:''},
+            A4x2:{page:'297mm 210mm',pw:'297mm',ph:'210mm',cls:'a4sheet'},
+            A5x4:{page:'148mm 210mm',pw:'148mm',ph:'210mm',cls:'a5x4sheet'}}[sheet];
+ document.getElementById('pg').textContent=`@page{size:${cfg.page};margin:0}`;
+ document.documentElement.style.setProperty('--pw',cfg.pw);document.documentElement.style.setProperty('--ph',cfg.ph);
+ $('sheet').className='page '+cfg.cls;
+ document.body.classList.toggle('nosplit',sheet==='A4x2'||sheet==='A5x4');
+}
 function build(seed){
  const r=rng(seed*7919+13),R=(a,b)=>a+(b-a)*r();
  // due possibili impianti: A) corsie orizzontali, rettilinei orizzontali, curve strette ai lati (verticali)
@@ -175,7 +190,15 @@ function blob(b,r){
  return d+'Z';
 }
 
-function render(seed){
+const LOCAL_IDS=['goo','mAll','mA','mS','hatch','gF','gB','mF','mB','gR','gS','gR2','mR'];
+function namespaceIds(svg,uid){
+ if(!uid)return svg;
+ LOCAL_IDS.forEach(id=>{
+  svg=svg.split(`id="${id}"`).join(`id="${uid}${id}"`).split(`url(#${id})`).join(`url(#${uid}${id})`);
+ });
+ return svg;
+}
+function render(seed,uid){
  const g=build(seed),pr=rng(seed*31+5);
  const{cell,surf,trees,mnt,S,N,cuts}=g;
  const LS=SIZE==='A7'?1.5:1,FS=2.6*LS;
@@ -301,7 +324,7 @@ function render(seed){
   s+=o;
  }
  s+='</svg>';
- return s;
+ return namespaceIds(s,uid);
 }
 
 function renderRules(){
@@ -355,14 +378,22 @@ function renderRules(){
  return s+`</svg>`;
 }
 const $=id=>document.getElementById(id);
-function draw(){$('sheet').innerHTML=render(parseInt($('seed').value)||1);$('rules').innerHTML=renderRules();document.body.classList.toggle('norules',!$('withRules').checked);}
+function draw(){
+ const sheet=$('sheet_').value,base=parseInt($('seed').value)||1;
+ if(sheet==='A5'){SIZE='A5';$('sheet').innerHTML=render(base,'');}
+ else if(sheet==='A7'){SIZE='A7';$('sheet').innerHTML=render(base,'');}
+ else if(sheet==='A4x2'){SIZE='A5';$('sheet').innerHTML=render(base,'p0_')+render(base+1,'p1_');}
+ else if(sheet==='A5x4'){SIZE='A7';$('sheet').innerHTML=[0,1,2,3].map(i=>render(base+i,'p'+i+'_')).join('');}
+ $('rules').innerHTML=renderRules();
+ document.body.classList.toggle('norules',!$('withRules').checked);
+}
 $('new').onclick=()=>{$('seed').value=Math.floor(Math.random()*99999)+1;draw();};
 $('seed').oninput=draw;
-$('size').onchange=()=>{SIZE=$('size').value;$('withRules').checked=SIZE==='A5';applySize();draw();};
+$('sheet_').onchange=()=>{const sh=$('sheet_').value;applySheet(sh);if(sh==='A5x4'||sh==='A4x2')$('withRules').checked=false;else if(sh==='A5')$('withRules').checked=true;draw();};
 $('withRules').onchange=draw;
 $('tone').oninput=()=>{setTone(+$('tone').value);draw();};
 $('print').onclick=()=>window.print();
-applySize();draw();
+applySheet('A5');draw();
 </script>
 </body>
 </html>
